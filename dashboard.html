@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Al Mecca Hotel and BBQ — Orders Dashboard</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Segoe UI,Tahoma,sans-serif;background:#f4f6f9;color:#1f2937;line-height:1.5}
+  .wrap{max-width:900px;margin:0 auto;padding:0 16px 40px}
+  .card{background:#fff;border-radius:14px;box-shadow:0 4px 15px rgba(0,0,0,.08);overflow:hidden;margin-bottom:16px}
+  .head{background:linear-gradient(135deg,#7c2d12,#ea580c);color:#fff;padding:20px 24px}
+  .head h1{margin:0;font-size:24px}
+  .head p{margin:4px 0 0;opacity:.9;font-size:14px}
+  .stats{display:flex;gap:12px;padding:16px 24px;flex-wrap:wrap}
+  .stat{flex:1;min-width:120px;background:#f4f6f9;border-radius:10px;padding:14px;text-align:center}
+  .stat b{display:block;font-size:22px;color:#7c2d12}
+  .stat span{font-size:13px;color:#555}
+  .filters{padding:0 24px 8px}
+  .filters button{background:#e5e7eb;border:0;border-radius:20px;padding:8px 14px;margin:0 6px 6px 0;cursor:pointer;font-size:13px}
+  .filters button.on{background:#7c2d12;color:#fff;font-weight:700}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:12px 16px;text-align:left;border-bottom:1px solid #eee;font-size:14px;vertical-align:top}
+  th{background:#f4f6f9;color:#555}
+  .pending{background:#fff3cd;color:#7a5b00;padding:3px 10px;border-radius:20px;font-size:12px;white-space:nowrap}
+  .done{background:#d4edda;color:#155724;padding:3px 10px;border-radius:20px;font-size:12px;white-space:nowrap}
+  .confirmed{background:#dbeafe;color:#1e40af;padding:3px 10px;border-radius:20px;font-size:12px;white-space:nowrap}
+  .notconf{background:#f8d7da;color:#721c24;padding:3px 10px;border-radius:20px;font-size:12px;white-space:nowrap}
+  .btn{background:#25d366;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}
+  .btn.ghost{background:#fff;color:#7c2d12;border:1px solid #7c2d12}
+  .note{padding:0 24px 20px;color:#555;font-size:13px;line-height:1.6}
+  .ok{background:#d4edda;border-radius:10px;padding:12px;margin:0 24px 20px;font-size:14px;color:#155724}
+  .err{background:#f8d7da;border-radius:10px;padding:12px;margin:0 24px 20px;font-size:14px;color:#721c24}
+  .updated{padding:0 24px 12px;color:#888;font-size:12px}
+  @media(max-width:640px){ table{font-size:13px} th,td{padding:10px 8px} .head h1{font-size:20px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <h1>🍖 Al Mecca Hotel and BBQ — Orders Dashboard</h1>
+      <p>Live orders • <span id="today"></span> • Admin only</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="stSales">Rs. 0</b><span>Total sales</span></div>
+      <div class="stat"><b id="stTotal">0</b><span>Total orders</span></div>
+      <div class="stat"><b id="stPend">0</b><span>Pending</span></div>
+      <div class="stat"><b id="stConf">0</b><span>Confirmed</span></div>
+      <div class="stat"><b id="stDone">0</b><span>Dispatched</span></div>
+    </div>
+    <div class="filters">
+      <button class="on" onclick="filterStatus('all',this)">All</button>
+      <button onclick="filterStatus('pending',this)">Pending</button>
+      <button onclick="filterStatus('confirmed',this)">Confirmed</button>
+      <button onclick="filterStatus('dispatched',this)">Dispatched</button>
+      <button onclick="filterStatus('notconfirmed',this)">Not Confirmed</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th><th></th></tr></thead>
+      <tbody id="orders"></tbody>
+    </table>
+    </div>
+    <div id="msg"></div>
+    <p class="updated">Last updated: <span id="updated">—</span> • Har 10 second me update hota hai</p>
+    <p class="note"><b>Kitchen Confirm</b> wahi kaam karta hai jo WhatsApp par kitchen ka <code>1</code> karta hai — customer ko ORDER CONFIRMED jata hai, owner ko update jata hai. <b>Dispatch</b> button <code>Done</code> command jaisa hai — rider ka naam aur phone pooch kar customer ko ORDER DISPATCHED aur owner ko dispatch report bhejta hai. <b>Menu owner WhatsApp se update hota hai:</b> <code>Price &lt;item&gt; &lt;new price&gt;</code>, <code>Add &lt;item&gt; &lt;price&gt;</code>, <code>Remove &lt;item&gt;</code> — sirf owner number se. <b>Offers:</b> owner WhatsApp par banner (tasveer) bheje to wo har customer ko jata hai — jis ne kabhi order kiya ho; <code>Offer &lt;text&gt;</code> se text offer, <code>CallOffer &lt;text&gt;</code> se calling agent har customer ko call karke offer sunata hai.</p>
+  </div>
+</div>
+
+<script>
+var orders = [];
+var filter = "all";
+var STATUS_LABEL = {"pending":"Pending","confirmed":"Confirmed","dispatched":"Dispatched","notconfirmed":"Not Confirmed"};
+
+document.getElementById("today").textContent = new Date().toLocaleDateString("en-GB", {weekday:"long", day:"numeric", month:"long", year:"numeric"});
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function statusKey(o){
+  var s = (o.status || "Pending").toLowerCase().replace(/[\s_]+/g, "");
+  if(s === "pending" || s === "pendingpreparation") return "pending";
+  if(s === "confirmed") return "confirmed";
+  if(s === "dispatched" || s === "outfordelivery") return "dispatched";
+  return "notconfirmed";
+}
+function render(){
+  var shown = orders.filter(function(o){ return filter === "all" || statusKey(o) === filter; });
+  var html = "";
+  shown.forEach(function(o){
+    var k = statusKey(o);
+    var badge = k === "pending" ? '<span class="pending">Pending</span>'
+      : k === "confirmed" ? '<span class="confirmed">Confirmed</span>'
+      : k === "dispatched" ? '<span class="done">Dispatched</span>'
+      : '<span class="notconf">Not Confirmed</span>';
+    var rider = o.rider_name ? '<br><span style="color:#555;font-size:12px">Rider: ' + esc(o.rider_name) + (o.rider_phone ? ' (' + esc(o.rider_phone) + ')' : '') + (o.eta ? ' • ETA ' + esc(o.eta) + ' min' : '') + '</span>' : '';
+    var btn = k === "pending" ? '<button class="btn" onclick="kitchenConfirm(\'' + esc(o.id) + '\')">Kitchen Confirm</button>'
+      : k === "confirmed" ? '<button class="btn" onclick="dispatchOrder(\'' + esc(o.id) + '\')">Dispatch</button>' : '';
+    var items = esc(o.items || "").replace(/\n/g, "<br>");
+    var total = (typeof o.total === "number") ? o.total : parseFloat(o.total) || 0;
+    html += '<tr><td><b>' + esc(o.id) + '</b><br><span style="color:#555;font-size:12px">' + esc(o.created || "") + '</span></td>'
+      + '<td>' + esc(o.name) + '<br><span style="color:#555;font-size:12px">' + esc(o.phone) + '</span>'
+      + (o.address ? '<br><span style="color:#555;font-size:12px">' + esc(o.address) + '</span>' : '') + '</td>'
+      + '<td>' + items + '</td>'
+      + '<td><b>Rs. ' + total.toLocaleString("en-PK") + '</b></td>'
+      + '<td>' + badge + rider + '</td><td>' + btn + '</td></tr>';
+  });
+  document.getElementById("orders").innerHTML = html || '<tr><td colspan="6" style="color:#555">Abhi koi order nahi hai.</td></tr>';
+  var sales = orders.reduce(function(s, o){ return s + (parseFloat(o.total) || 0); }, 0);
+  document.getElementById("stSales").textContent = "Rs. " + sales.toLocaleString("en-PK");
+  document.getElementById("stTotal").textContent = orders.length;
+  document.getElementById("stPend").textContent = orders.filter(function(o){ return statusKey(o) === "pending"; }).length;
+  document.getElementById("stConf").textContent = orders.filter(function(o){ return statusKey(o) === "confirmed"; }).length;
+  document.getElementById("stDone").textContent = orders.filter(function(o){ return statusKey(o) === "dispatched"; }).length;
+}
+function filterStatus(f, btn){
+  filter = f;
+  document.querySelectorAll(".filters button").forEach(function(b){ b.classList.remove("on"); });
+  btn.classList.add("on");
+  render();
+}
+function showMsg(html, isErr){
+  document.getElementById("msg").innerHTML = '<div class="' + (isErr ? 'err' : 'ok') + '">' + html + '</div>';
+}
+function loadOrders(){
+  fetch("/api/orders", {credentials: "same-origin"})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function(d){
+      orders = d.orders || [];
+      document.getElementById("updated").textContent = d.updated || new Date().toLocaleTimeString("en-PK");
+      render();
+    })
+    .catch(function(e){
+      showMsg("⚠️ Orders load nahi ho rahe (" + esc(e.message) + "). Page dobara kholo ya login dobara karo.", true);
+    });
+}
+function kitchenConfirm(id){
+  fetch("/api/confirm", {method: "POST", credentials: "same-origin",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({order_id: id})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.status === "ok"){ showMsg("✅ " + esc(d.order_id) + " confirmed — customer aur owner ko update bhej diya gaya.", false); }
+      else { showMsg("❌ " + esc(d.message || "Confirm nahi ho saka."), true); }
+      loadOrders();
+    })
+    .catch(function(e){ showMsg("❌ Confirm nahi ho saka: " + esc(e.message), true); });
+}
+function dispatchOrder(id){
+  var rider = prompt("Rider ka naam likho:", "Ahmed");
+  if(rider === null || !rider.trim()) return;
+  var riderPhone = prompt("Rider ka WhatsApp number likho:", "03001234567");
+  if(riderPhone === null || !riderPhone.trim()) return;
+  fetch("/api/dispatch", {method: "POST", credentials: "same-origin",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({order_id: id, rider_name: rider.trim(), rider_phone: riderPhone.trim()})})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.status === "ok"){ showMsg("✅ " + esc(d.order_id) + " dispatched — rider " + esc(rider.trim()) + " (" + esc(riderPhone.trim()) + "). Customer aur owner ko alert bhej diya gaya.", false); }
+      else { showMsg("❌ " + esc(d.message || "Dispatch nahi ho saka."), true); }
+      loadOrders();
+    })
+    .catch(function(e){ showMsg("❌ Dispatch nahi ho saka: " + esc(e.message), true); });
+}
+loadOrders();
+setInterval(loadOrders, 10000);
+</script>
+</body>
+</html>
