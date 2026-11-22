@@ -700,6 +700,7 @@ def _confirm_order(order, rider_name="", rider_phone="", eta=30):
     order["Status"] = "Confirmed"
     order["Rider Name"] = rider_name
     order["Rider Phone"] = rider_phone
+    order["ETA"] = eta
     update_order_status_in_sheet(order_id, "Confirmed", rider_name, rider_phone)
     send_whatsapp_message(to_number=cust_phone, body=_customer_confirm_msg(order_id, grand_total, rider_name, rider_phone, eta))
     send_whatsapp_message(to_number=OWNER_WHATSAPP, body=_owner_confirm_msg(order_id, cust_name, cust_phone, rider_name, rider_phone, eta))
@@ -718,6 +719,7 @@ def _attach_rider(order, rider_name, rider_phone, eta=30):
     grand_total = order.get("Grand Total", "")
     order["Rider Name"] = rider_name
     order["Rider Phone"] = rider_phone
+    order["ETA"] = eta
     update_order_status_in_sheet(order_id, "Confirmed", rider_name, rider_phone)
     send_whatsapp_message(to_number=cust_phone, body=_customer_confirm_msg(order_id, grand_total, rider_name, rider_phone, eta))
     send_whatsapp_message(to_number=OWNER_WHATSAPP, body=(
@@ -753,6 +755,43 @@ def _not_confirm_order(order):
         kitchen_pending_order = None
     if pending_rider_order is order:
         pending_rider_order = None
+    return order_id
+
+def _dispatch_order(order, rider_name, rider_phone):
+    """Mark an order dispatched and notify customer + owner.
+    Same messages as the owner Done command. Returns the order ID."""
+    order_id = order.get("Order ID", "")
+    cust_phone = re.sub(r"[^\d+]", "", str(order.get("Phone", "")))
+    grand_total = order.get("Grand Total", "")
+    address = order.get("Address", "N/A")
+    cust_name = order.get("Name", "Customer")
+    order["Status"] = "Dispatched"
+    order["Rider Name"] = rider_name
+    order["Rider Phone"] = rider_phone
+    customer_dispatch_msg = (
+        f"🚴‍♂️ *{BUSINESS_NAME.upper()} - ORDER DISPATCHED*\n\n"
+        f"🆔 *Order ID:* {order_id}\n\n"
+        f"👤 *Rider Name:* {rider_name}\n"
+        f"📞 *Rider Phone:* {rider_phone}\n"
+        f"💰 *Cash to Pay:* {CUR} {grand_total}\n"
+        f"⏱️ *Estimated Time:* 20-30 Minutes\n\n"
+        f"Thank you for choosing {BUSINESS_NAME}! ❤️"
+    )
+    send_whatsapp_message(to_number=cust_phone, body=customer_dispatch_msg)
+    owner_dispatch_msg = (
+        f"🚀 *DISPATCH REPORT - {BUSINESS_NAME.upper()}*\n\n"
+        f"🆔 *Order ID:* {order_id}\n"
+        f"👤 *Customer:* {cust_name}\n"
+        f"📞 *Phone:* {cust_phone}\n"
+        f"📍 *Address:* {address}\n\n"
+        f"🚴 *RIDER ASSIGNED:*\n"
+        f"• Rider Name: {rider_name}\n"
+        f"• Rider Phone: {rider_phone}\n\n"
+        f"💰 *CASH TO COLLECT:* {CUR} {grand_total}\n"
+        f"📌 *Status:* Out for Delivery"
+    )
+    send_whatsapp_message(to_number=OWNER_WHATSAPP, body=owner_dispatch_msg)
+    update_order_status_in_sheet(order_id, "Dispatched", rider_name, rider_phone)
     return order_id
 
 def _twilio_signature_valid(request: Request, raw_body: bytes) -> bool:
@@ -929,34 +968,7 @@ async def whatsapp_webhook(request: Request):
                     body=f"❌ Order not found for phone {cust_phone}. Check the number and try again. No message was sent to the customer.",
                 )
                 return Response(content="<Response></Response>", media_type="application/xml")
-            order_id = order.get("Order ID", "")
-            grand_total = order.get("Grand Total", "")
-            address = order.get("Address", "N/A")
-            cust_name = order.get("Name", "Customer")
-            customer_dispatch_msg = (
-                f"🚴‍♂️ *{BUSINESS_NAME.upper()} - ORDER DISPATCHED*\n\n"
-                f"🆔 *Order ID:* {order_id}\n\n"
-                f"👤 *Rider Name:* {rider_name}\n"
-                f"📞 *Rider Phone:* {rider_phone}\n"
-                f"💰 *Cash to Pay:* {CUR} {grand_total}\n"
-                f"⏱️ *Estimated Time:* 20-30 Minutes\n\n"
-                f"Thank you for choosing {BUSINESS_NAME}! ❤️"
-            )
-            send_whatsapp_message(to_number=cust_phone, body=customer_dispatch_msg)
-            owner_dispatch_msg = (
-                f"🚀 *DISPATCH REPORT - {BUSINESS_NAME.upper()}*\n\n"
-                f"🆔 *Order ID:* {order_id}\n"
-                f"👤 *Customer:* {cust_name}\n"
-                f"📞 *Phone:* {cust_phone}\n"
-                f"📍 *Address:* {address}\n\n"
-                f"🚴 *RIDER ASSIGNED:*\n"
-                f"• Rider Name: {rider_name}\n"
-                f"• Rider Phone: {rider_phone}\n\n"
-                f"💰 *CASH TO COLLECT:* {CUR} {grand_total}\n"
-                f"📌 *Status:* Out for Delivery"
-            )
-            send_whatsapp_message(to_number=OWNER_WHATSAPP, body=owner_dispatch_msg)
-            update_order_status_in_sheet(order_id, "Dispatched", rider_name, rider_phone)
+            _dispatch_order(order, rider_name, rider_phone)
             return Response(content="<Response></Response>", media_type="application/xml")
         if user_phone == owner_num_clean:
             if msg_lower.startswith("calloffer"):
@@ -1205,6 +1217,7 @@ async def whatsapp_webhook(request: Request):
         saved = save_order_to_sheet(order_id, session)
         confirmed_orders[order_id] = {
             "Order ID": order_id,
+            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Name": session["name"],
             "Phone": final_phone,
             "Address": session["address"],
@@ -1281,6 +1294,7 @@ async def web_order(request: Request):
     # the 1/2 quick-confirm and owner Done work even with no Sheet.
     confirmed_orders[order_id] = {
         "Order ID": order_id,
+        "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "Name": name,
         "Phone": phone,
         "Address": address,
@@ -1304,6 +1318,132 @@ async def web_order(request: Request):
     return {"status": "ok", "order_id": order_id, "total": parsed["grand_total"],
             "currency": CUR, "sheet_saved": bool(saved),
             "unmatched": parsed.get("unmatched", [])}
+
+# ---------------------------------------------------------------- live dashboard
+# The dashboard is served by the bot itself at GET /dashboard (admin login
+# required, same as /settings) and polls GET /api/orders every 10 seconds.
+# Orders come from the in-memory confirmed_orders store plus the Google
+# Sheet when one is configured — the Sheet is the source of truth then,
+# deduplicated by order ID. If the Sheet cannot be read, memory only is
+# returned; the dashboard never crashes over the Sheet.
+
+def _normalise_status(value):
+    v = (value or "").strip().lower()
+    if v in ("pending", "pending preparation"):
+        return "Pending"
+    if v == "confirmed":
+        return "Confirmed"
+    if v in ("dispatched", "out for delivery"):
+        return "Dispatched"
+    if v in ("not confirmed", "not_confirmed"):
+        return "Not Confirmed"
+    return (value or "Pending").strip()
+
+def _order_to_api(rec):
+    return {
+        "id": str(rec.get("Order ID", "") or ""),
+        "name": str(rec.get("Name", "") or ""),
+        "phone": str(rec.get("Phone", "") or ""),
+        "address": str(rec.get("Address", "") or ""),
+        "items": str(rec.get("Items", "") or ""),
+        "total": rec.get("Grand Total", "") or "",
+        "status": _normalise_status(rec.get("Status", "Pending")),
+        "rider_name": str(rec.get("Rider Name", "") or ""),
+        "rider_phone": str(rec.get("Rider Phone", "") or ""),
+        "eta": rec.get("ETA", "") or "",
+        "created": str(rec.get("Date", "") or ""),
+    }
+
+def _get_live_orders():
+    orders = {}
+    for rec in confirmed_orders.values():
+        oid = str(rec.get("Order ID", "") or "").strip()
+        if oid:
+            orders[oid] = _order_to_api(rec)
+    try:
+        sheet = get_google_sheet()
+        if sheet:
+            for row in sheet.get_all_records():
+                oid = str(row.get("Order ID", "") or "").strip()
+                if not oid:
+                    continue
+                # Sheet is the source of truth when present.
+                orders[oid] = _order_to_api(row)
+    except Exception as e:
+        print(f"Error reading sheet orders for dashboard: {e}")
+    out = list(orders.values())
+
+    def _sort_key(o):
+        try:
+            return (1, datetime.strptime(o["created"], "%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            return (0, datetime.min)
+
+    out.sort(key=_sort_key, reverse=True)
+    return out
+
+def _dashboard_html():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        print(f"Dashboard file missing: {e}")
+        return None
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(_admin: str = Depends(require_admin)):
+    html = _dashboard_html()
+    if html is None:
+        html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            f"<title>{BUSINESS_NAME} — Dashboard</title></head><body>"
+            "<h1>Dashboard file missing</h1>"
+            "<p>dashboard.html is not on the server. Re-deploy the bot "
+            "with dashboard.html next to the bot file.</p>"
+            "</body></html>"
+        )
+    return HTMLResponse(content=html)
+
+@app.get("/api/orders")
+async def api_orders(_admin: str = Depends(require_admin)):
+    return {"orders": _get_live_orders(),
+            "updated": datetime.now().strftime("%H:%M:%S")}
+
+@app.post("/api/confirm")
+async def api_confirm(request: Request, _admin: str = Depends(require_admin)):
+    try:
+        data = await request.json()
+    except Exception:
+        return {"status": "error", "message": "Body must be JSON."}
+    order_id = str(data.get("order_id", "") or "").strip()
+    order = _find_order(order_id) if order_id else None
+    if not order:
+        return {"status": "error", "message": f"Order not found: {order_id}"}
+    status_now = str(order.get("Status", "")).strip().lower()
+    if status_now == "confirmed":
+        return {"status": "error", "message": "Order is already confirmed."}
+    if status_now == "dispatched":
+        return {"status": "error", "message": "Order is already dispatched."}
+    _confirm_order(order)
+    return {"status": "ok", "order_id": order.get("Order ID", order_id)}
+
+@app.post("/api/dispatch")
+async def api_dispatch(request: Request, _admin: str = Depends(require_admin)):
+    try:
+        data = await request.json()
+    except Exception:
+        return {"status": "error", "message": "Body must be JSON."}
+    order_id = str(data.get("order_id", "") or "").strip()
+    rider_name = str(data.get("rider_name", "") or "").strip()
+    rider_phone = re.sub(r"[^\d+]", "", str(data.get("rider_phone", "") or "").strip())
+    if not rider_name or len(re.sub(r"\D", "", rider_phone)) < 10:
+        return {"status": "error", "message": "Rider name and phone are required."}
+    order = _find_order(order_id) if order_id else None
+    if not order:
+        return {"status": "error", "message": f"Order not found: {order_id}"}
+    _dispatch_order(order, rider_name, rider_phone)
+    return {"status": "ok", "order_id": order.get("Order ID", order_id)}
 
 @app.get("/settings", response_class=HTMLResponse)
 async def get_settings_form(_admin: str = Depends(require_admin)):
