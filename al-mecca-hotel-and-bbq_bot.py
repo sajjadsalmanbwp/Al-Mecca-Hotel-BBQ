@@ -42,7 +42,7 @@ BUSINESS_NAME = "Al Mecca Hotel and BBQ"
 BUSINESS_TYPE = "restaurant"
 CONFIG_FILE = "al-mecca-hotel-and-bbq_config.json"
 CUR = "Rs."
-MSG = {"welcome": "Assalam o Alaikum! {name} mein khush amdeed.", "menu_footer": "Order likh kar bhejein, masalan: '2 chicken biryani, 1 naan'", "ask_name": "Step 1 of 3: Barah-e-karam apna mukammal naam likh kar bhejein.", "correct_prompt": "Agar ye item bhi chahiye to sahi spelling likh kar bhejein, warna apna naam likh kar bhejein.", "ask_address": "Step 2 of 3: Ab apna mukammal delivery address likhein.", "ask_phone": "Step 3 of 3: Apna phone number likhein (ya agar yehi WhatsApp number hai to 'Same' likh kar bhejein).", "not_understood": "Maaf kijiye, main aapka order samajh nahi paya. Neeche menu se choose karein.", "cancelled": "Order cancel kar diya gaya hai. Naya order ke liye menu se choose karein.", "confirmed": "Aap ka order confirm ho gaya hai aur kitchen ko bhej diya gaya hai. {name} muntakhab karne ka shukriya!", "thanks_name": "Shukriya {name} sahib! ", "name_too_short": "Please apna sahi naam likhein.", "address_too_short": "Please apna mukammal address likhein.", "phone_invalid": "Please sahi phone number likhein, ya 'Same' likhein.", "order_title": "ORDER SUMMARY", "food_total": "Food Total", "delivery": "Delivery Charges", "grand_total": "Total", "dispatch_usage": "Usage: Done <Customer_Phone> <Rider_Name> <Rider_Phone>", "delivery_usage": "Usage: Delivery 200", "confirm_usage": "Usage: Confirm <Order_ID_or_Phone> <Rider_Name> <Rider_Phone> [Minutes] — masalan: Confirm ORD-20261118-4567 Ahmed 03001234567 30", "not_owner": "❌ Menu change sirf owner kar sakta hai. Order ke liye sirf item aur quantity likhein, masalan: '2 chicken tikka, 1 naan'.", "price_usage": "Usage: Price <Item> <New Price> — masalan: Price chicken tikka 400", "add_usage": "Usage: Add <Item> <Price> — masalan: Add zinger burger 350", "remove_usage": "Usage: Remove <Item> — masalan: Remove raita", "subscribe_invite": "🎉 Offers ki khabar aap ko milegi — jab bhi koi offer aayegi, aap ko message bhej diya jayega.", "offer_usage": "Usage: Offer <message> — masalan: Offer BBQ Feast — Flat 20% OFF, sirf is haftay!", "not_owner_offer": "❌ Offers sirf owner bhej sakta hai.", "call_offer_usage": "Usage: CallOffer <message> — masalan: CallOffer BBQ Feast — Flat 20% OFF, sirf is haftay!", "no_voice_number": "📞 Voice number set nahi hai — Railway Variables me TWILIO_VOICE_NUMBER lagayein.", "no_pending": "❌ Abhi koi pending order nahi hai.", "order_not_confirmed": "Maaf kijiye, aap ka order confirm nahi ho saka. Barah-e-karam dobara order karein ya restaurant ko call karein. Shukriya!"}
+MSG = {"welcome": "Assalam o Alaikum! {name} mein khush amdeed.", "menu_footer": "Order likh kar bhejein, masalan: '2 chicken biryani, 1 naan'", "ask_name": "Step 1 of 3: Barah-e-karam apna mukammal naam likh kar bhejein.", "correct_prompt": "Agar ye item bhi chahiye to sahi spelling likh kar bhejein, warna apna naam likh kar bhejein.", "ask_address": "Step 2 of 3: Ab apna mukammal delivery address likhein.", "ask_phone": "Step 3 of 3: Apna phone number likhein (ya agar yehi WhatsApp number hai to 'Same' likh kar bhejein).", "not_understood": "Maaf kijiye, main aapka order samajh nahi paya. Neeche menu se choose karein.", "cancelled": "Order cancel kar diya gaya hai. Naya order ke liye menu se choose karein.", "confirmed": "Aap ka order confirm ho gaya hai aur kitchen ko bhej diya gaya hai. {name} muntakhab karne ka shukriya!", "thanks_name": "Shukriya {name} sahib! ", "name_too_short": "Please apna sahi naam likhein.", "address_too_short": "Please apna mukammal address likhein.", "phone_invalid": "Please sahi phone number likhein, ya 'Same' likhein.", "order_title": "ORDER SUMMARY", "food_total": "Food Total", "delivery": "Delivery Charges", "grand_total": "Total", "dispatch_usage": "Usage: Done <Customer_Phone> <Rider_Name> <Rider_Phone>", "delivery_usage": "Usage: Delivery 200", "confirm_usage": "Usage: Confirm <Order_ID_or_Phone> <Rider_Name> <Rider_Phone> [Minutes] — masalan: Confirm ORD-20261118-4567 Ahmed 03001234567 30", "not_owner": "❌ Menu change sirf owner kar sakta hai. Order ke liye sirf item aur quantity likhein, masalan: '2 chicken tikka, 1 naan'.", "price_usage": "Usage: Price <Item> <New Price> — masalan: Price chicken tikka 400", "add_usage": "Usage: Add <Item> <Price> — masalan: Add zinger burger 350", "remove_usage": "Usage: Remove <Item> — masalan: Remove raita", "subscribe_invite": "🎉 Offers ki khabar aap ko milegi — jab bhi koi offer aayegi, aap ko message bhej diya jayega.", "offer_usage": "Usage: Offer <message> — masalan: Offer BBQ Feast — Flat 20% OFF, sirf is haftay!", "not_owner_offer": "❌ Offers sirf owner bhej sakta hai.", "call_offer_usage": "Usage: CallOffer <message> — masalan: CallOffer BBQ Feast — Flat 20% OFF, sirf is haftay!", "no_voice_number": "📞 Voice number set nahi hai — Railway Variables me TWILIO_VOICE_NUMBER lagayein.", "no_pending": "❌ Abhi koi pending order nahi hai.", "order_not_confirmed": "Maaf kijiye, aap ka order confirm nahi ho saka. Barah-e-karam dobara order karein ya restaurant ko call karein. Shukriya!", "voice_note_failed": "Maaf kijiye, aap ki voice note samajh nahi aayi. Barah-e-karam apna order likh kar bhejein, masalan: '2 chicken tikka, 1 naan'."}
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
@@ -353,6 +353,60 @@ def send_whatsapp_message(to_number: str, body: str, media_url=None):
     except Exception as e:
         print(f"WhatsApp Send Error ({to_number}): {e}")
         return False
+
+
+# Voice notes (WhatsApp audio messages): Twilio sends them as media with
+# MediaContentType0 "audio/ogg" (Opus) and an empty Body. The media URL
+# needs Twilio basic auth (Account SID + Auth Token) to download.
+MAX_VOICE_NOTE_BYTES = 10 * 1024 * 1024  # 10 MB cap — a voice note is ~1 MB/min
+TRANSCRIBE_MODEL = "gemini-3.5-flash-lite"  # same model as order parsing;
+# Google's docs list audio as an input modality for it (audio/ogg included),
+# so no model switch is needed for transcription.
+
+def _download_twilio_media(media_url: str):
+    """Download a Twilio media URL with basic auth. Returns bytes or None."""
+    if not media_url or not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+        return None
+    try:
+        import base64
+        import urllib.request
+        creds = base64.b64encode(
+            f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}".encode()).decode()
+        req = urllib.request.Request(media_url)
+        req.add_header("Authorization", f"Basic {creds}")
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = resp.read(MAX_VOICE_NOTE_BYTES + 1)
+        if len(data) > MAX_VOICE_NOTE_BYTES:
+            print("Voice note too large, skipping")
+            return None
+        return data
+    except Exception as e:
+        print(f"Media download error: {e}")
+        return None
+
+
+def _transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
+    """Transcribe voice-note audio to text with Gemini. Returns text or ''.
+
+    Returns '' on any failure (no key, bad audio, API error) — the caller
+    then asks the customer to type the order instead of staying silent.
+    """
+    if not audio_bytes or not GEMINI_API_KEY:
+        return ""
+    try:
+        model = genai.GenerativeModel(TRANSCRIBE_MODEL)
+        clean_mime = (mime_type or "audio/ogg").split(";")[0].strip()
+        response = model.generate_content([
+            {"mime_type": clean_mime, "data": audio_bytes},
+            "Transcribe this voice message to text, exactly as spoken, "
+            "in Roman Urdu or English. Return only the transcribed text, "
+            "nothing else.",
+        ])
+        return (response.text or "").strip()
+    except Exception as e:
+        print(f"Audio transcription error: {e}")
+        return ""
+
 
 def _normalise(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").lower().strip())
@@ -825,6 +879,27 @@ async def whatsapp_webhook(request: Request):
     media_url = form.get("MediaUrl0", [""])[0] if num_media > 0 else ""
     if not user_phone:
         return Response(content="<Response></Response>", media_type="application/xml")
+
+    media_content_type = form.get("MediaContentType0", [""])[0] if num_media > 0 else ""
+    if num_media > 0 and media_content_type.startswith("audio/") and not msg_text:
+        # WhatsApp voice note: transcribe it, then handle the transcribed
+        # text exactly as if the customer had typed it (order, correction,
+        # name/address/phone states, kitchen 1/2, owner commands).
+        # Any failure here must ask the customer to type — never silence,
+        # never a 500.
+        try:
+            audio_bytes = _download_twilio_media(media_url)
+            transcribed = _transcribe_audio(audio_bytes, media_content_type) if audio_bytes else ""
+        except Exception as e:
+            print(f"Voice note handling error: {e}")
+            transcribed = ""
+        if not transcribed:
+            send_whatsapp_message(to_number=user_phone, body=MSG["voice_note_failed"])
+            return Response(content="<Response></Response>", media_type="application/xml")
+        print(f"Voice note transcribed for {user_phone}: {transcribed[:120]}")
+        msg_text = transcribed
+        msg_lower = _normalise(msg_text)
+        media_url = ""  # audio already handled — never treat it as a banner image
 
     owner_num_clean = OWNER_WHATSAPP.replace("whatsapp:", "").strip()
     kitchen_num_clean = KITCHEN_WHATSAPP.replace("whatsapp:", "").strip()
