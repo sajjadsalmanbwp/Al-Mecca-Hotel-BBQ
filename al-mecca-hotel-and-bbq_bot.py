@@ -16,6 +16,7 @@
 #   ADMIN_USERNAME, ADMIN_PASSWORD
 #   (do NOT set FIXED_DELIVERY_CHARGE — the delivery charge comes from
 #   the config JSON unless that variable is set)
+import difflib
 import json
 import os
 import re
@@ -41,7 +42,7 @@ BUSINESS_NAME = "Al Mecca Hotel and BBQ"
 BUSINESS_TYPE = "restaurant"
 CONFIG_FILE = "al-mecca-hotel-and-bbq_config.json"
 CUR = "Rs."
-MSG = {"welcome": "Assalam o Alaikum! {name} mein khush amdeed.", "menu_footer": "Order likh kar bhejein, masalan: '2 chicken biryani, 1 naan'", "ask_name": "Step 1 of 3: Barah-e-karam apna mukammal naam likh kar bhejein.", "ask_address": "Step 2 of 3: Ab apna mukammal delivery address likhein.", "ask_phone": "Step 3 of 3: Apna phone number likhein (ya agar yehi WhatsApp number hai to 'Same' likh kar bhejein).", "not_understood": "Maaf kijiye, main aapka order samajh nahi paya. Neeche menu se choose karein.", "cancelled": "Order cancel kar diya gaya hai. Naya order ke liye menu se choose karein.", "confirmed": "Aap ka order confirm ho gaya hai aur kitchen ko bhej diya gaya hai. {name} muntakhab karne ka shukriya!", "thanks_name": "Shukriya {name} sahib! ", "name_too_short": "Please apna sahi naam likhein.", "address_too_short": "Please apna mukammal address likhein.", "phone_invalid": "Please sahi phone number likhein, ya 'Same' likhein.", "order_title": "ORDER SUMMARY", "food_total": "Food Total", "delivery": "Delivery Charges", "grand_total": "Total", "dispatch_usage": "Usage: Done <Customer_Phone> <Rider_Name> <Rider_Phone>", "delivery_usage": "Usage: Delivery 200", "confirm_usage": "Usage: Confirm <Order_ID_or_Phone> <Rider_Name> <Rider_Phone> [Minutes] — masalan: Confirm ORD-20261118-4567 Ahmed 03001234567 30", "not_owner": "❌ Menu change sirf owner kar sakta hai. Order ke liye sirf item aur quantity likhein, masalan: '2 chicken tikka, 1 naan'.", "price_usage": "Usage: Price <Item> <New Price> — masalan: Price chicken tikka 400", "add_usage": "Usage: Add <Item> <Price> — masalan: Add zinger burger 350", "remove_usage": "Usage: Remove <Item> — masalan: Remove raita", "subscribe_invite": "🎉 Offers ki khabar aap ko milegi — jab bhi koi offer aayegi, aap ko message bhej diya jayega.", "offer_usage": "Usage: Offer <message> — masalan: Offer BBQ Feast — Flat 20% OFF, sirf is haftay!", "not_owner_offer": "❌ Offers sirf owner bhej sakta hai.", "call_offer_usage": "Usage: CallOffer <message> — masalan: CallOffer BBQ Feast — Flat 20% OFF, sirf is haftay!", "no_voice_number": "📞 Voice number set nahi hai — Railway Variables me TWILIO_VOICE_NUMBER lagayein."}
+MSG = {"welcome": "Assalam o Alaikum! {name} mein khush amdeed.", "menu_footer": "Order likh kar bhejein, masalan: '2 chicken biryani, 1 naan'", "ask_name": "Step 1 of 3: Barah-e-karam apna mukammal naam likh kar bhejein.", "ask_address": "Step 2 of 3: Ab apna mukammal delivery address likhein.", "ask_phone": "Step 3 of 3: Apna phone number likhein (ya agar yehi WhatsApp number hai to 'Same' likh kar bhejein).", "not_understood": "Maaf kijiye, main aapka order samajh nahi paya. Neeche menu se choose karein.", "cancelled": "Order cancel kar diya gaya hai. Naya order ke liye menu se choose karein.", "confirmed": "Aap ka order confirm ho gaya hai aur kitchen ko bhej diya gaya hai. {name} muntakhab karne ka shukriya!", "thanks_name": "Shukriya {name} sahib! ", "name_too_short": "Please apna sahi naam likhein.", "address_too_short": "Please apna mukammal address likhein.", "phone_invalid": "Please sahi phone number likhein, ya 'Same' likhein.", "order_title": "ORDER SUMMARY", "food_total": "Food Total", "delivery": "Delivery Charges", "grand_total": "Total", "dispatch_usage": "Usage: Done <Customer_Phone> <Rider_Name> <Rider_Phone>", "delivery_usage": "Usage: Delivery 200", "confirm_usage": "Usage: Confirm <Order_ID_or_Phone> <Rider_Name> <Rider_Phone> [Minutes] — masalan: Confirm ORD-20261118-4567 Ahmed 03001234567 30", "not_owner": "❌ Menu change sirf owner kar sakta hai. Order ke liye sirf item aur quantity likhein, masalan: '2 chicken tikka, 1 naan'.", "price_usage": "Usage: Price <Item> <New Price> — masalan: Price chicken tikka 400", "add_usage": "Usage: Add <Item> <Price> — masalan: Add zinger burger 350", "remove_usage": "Usage: Remove <Item> — masalan: Remove raita", "subscribe_invite": "🎉 Offers ki khabar aap ko milegi — jab bhi koi offer aayegi, aap ko message bhej diya jayega.", "offer_usage": "Usage: Offer <message> — masalan: Offer BBQ Feast — Flat 20% OFF, sirf is haftay!", "not_owner_offer": "❌ Offers sirf owner bhej sakta hai.", "call_offer_usage": "Usage: CallOffer <message> — masalan: CallOffer BBQ Feast — Flat 20% OFF, sirf is haftay!", "no_voice_number": "📞 Voice number set nahi hai — Railway Variables me TWILIO_VOICE_NUMBER lagayein.", "no_pending": "❌ Abhi koi pending order nahi hai.", "order_not_confirmed": "Maaf kijiye, aap ka order confirm nahi ho saka. Barah-e-karam dobara order karein ya restaurant ko call karein. Shukriya!"}
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
@@ -201,6 +202,19 @@ SESSION_TIMEOUT_SECONDS = 30 * 60
 # The Sheet stays the source of truth once it is configured.
 confirmed_orders = {}
 
+# Latest order the kitchen has been alerted about but not yet answered
+# (for the 1/2 quick-confirm flow), and the order waiting for an optional
+# rider follow-up message from the kitchen after a "1" confirm.
+# These hold the order RECORD (dict), not just the order ID string:
+# order IDs are ORD-YYYYMMDD-last-4-of-phone, so two orders from the same
+# phone on the same day share one ID and the second overwrites the first
+# in confirmed_orders. Tracking the record keeps "1" and the rider
+# follow-up on the exact order the kitchen was alerted about / just
+# confirmed. (Known limitation: the ID itself is still not unique — a
+# proper fix with unique order IDs is a separate change.)
+kitchen_pending_order = None
+pending_rider_order = None
+
 def _canonical_digits(phone):
     digits = re.sub(r"\D", "", phone or "")
     if digits.startswith("0") and len(digits) == 11:
@@ -347,13 +361,61 @@ def _qty_before(text: str, start: int) -> int:
     m = re.findall(r"(\d+)\s*$", before)
     return int(m[0]) if m else 1
 
+def _fuzzy_ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+# Start index of each item's match in the text of the last local parse.
+# parse_menu_items_locally fills it; _has_unmatched_quantity reads it.
+_last_match_pos = {}
+
 def parse_menu_items_locally(text: str) -> dict:
+    """Exact matches first, then fuzzy matches for typos (e.g. 'chiken
+    tikka', 'tika', 'biryani', 'seekh kbab'). A fuzzy match needs either
+    every word of the item to match a nearby word (>= 0.8 similarity) or
+    one distinctive word (>= 0.85) that belongs to a single menu item —
+    so 'naan' never matches 'chicken biryani' and 'kabab' alone never
+    picks between 'seekh kabab' and 'beef kabab'."""
     low = _normalise(text)
     found = {}
+    _last_match_pos.clear()
     for item in MENU:
         idx = low.find(item)
         if idx != -1:
             found[item] = _qty_before(low, idx)
+            _last_match_pos[item] = idx
+    spans = [(m.group(), m.start()) for m in re.finditer(r"[a-z]+", low)]
+    if not spans:
+        return found
+    words = [w for w, _ in spans]
+    for item in MENU:
+        if item in found:
+            continue
+        item_words = item.split()
+        best = []
+        for iw in item_words:
+            best_ratio, best_idx = 0.0, -1
+            for ti, tw in enumerate(words):
+                r = _fuzzy_ratio(iw, tw)
+                if r > best_ratio:
+                    best_ratio, best_idx = r, ti
+            best.append((best_ratio, best_idx))
+        # All words matched, close together in the text.
+        if all((r >= 0.99 if len(iw) <= 3 else r >= 0.8) for iw, (r, _) in zip(item_words, best)):
+            idxs = sorted(i for _, i in best)
+            if idxs[-1] - idxs[0] <= 3:
+                pos = spans[idxs[0]][1]
+                found[item] = _qty_before(low, pos)
+                _last_match_pos[item] = pos
+            continue
+        # One distinctive word matched strongly (>= 0.85), unique to this item.
+        strong = [(iw, r, i) for iw, (r, i) in zip(item_words, best)
+                  if len(iw) >= 4 and r >= 0.85]
+        if len(strong) == 1:
+            iw = strong[0][0]
+            if sum(1 for other in MENU if iw in other.split()) == 1:
+                pos = spans[strong[0][2]][1]
+                found[item] = _qty_before(low, pos)
+                _last_match_pos[item] = pos
     return found
 
 def _has_unmatched_quantity(text: str, items: dict) -> bool:
@@ -361,18 +423,69 @@ def _has_unmatched_quantity(text: str, items: dict) -> bool:
     for m in re.finditer(r"\d+", low):
         accounted = False
         for item in items:
-            idx = low.find(item)
-            while idx != -1:
-                before = low[max(0, idx - 12):idx]
-                if re.search(rf"{re.escape(m.group())}\s*$", before):
-                    accounted = True
-                    break
-                idx = low.find(item, idx + 1)
-            if accounted:
+            pos = _last_match_pos.get(item)
+            if pos is None:
+                idx = low.find(item)
+                if idx == -1:
+                    continue
+                pos = idx
+            before = low[max(0, pos - 12):pos]
+            if re.search(rf"{re.escape(m.group())}\s*$", before):
+                accounted = True
                 break
         if not accounted:
             return True
     return False
+
+def _unmatched_segments(text: str, items: dict) -> list:
+    """Short text segments for quantities the parse could not account for
+    (e.g. '3 chicken bargain'). Each menu item accounts for at most one
+    number, so a dropped part is reported instead of rejecting the whole
+    order. Returns [] when everything was understood."""
+    low = _normalise(text)
+    segments = []
+    used_items = set()
+    for m in re.finditer(r"\d+", low):
+        num = m.group()
+        end = len(low)
+        nxt = re.search(r"\d+", low[m.end():])
+        if nxt:
+            end = m.end() + nxt.start()
+        after = low[m.end():end]
+        after_words = re.findall(r"[a-z]+", after)[:4]
+        accounted = False
+        for item in items:
+            if item in used_items:
+                continue
+            pos = _last_match_pos.get(item)
+            if pos is None:
+                idx = low.find(item)
+                if idx != -1:
+                    pos = idx
+            if pos is not None:
+                before = low[max(0, pos - 12):pos]
+                if re.search(rf"{re.escape(num)}\s*$", before):
+                    used_items.add(item)
+                    accounted = True
+                    break
+        if not accounted:
+            best = None
+            for item in items:
+                if item in used_items:
+                    continue
+                for iw in item.split():
+                    for w in after_words:
+                        r = _fuzzy_ratio(iw, w)
+                        if r >= 0.8 and (best is None or r > best[0]):
+                            best = (r, item)
+            if best is not None:
+                used_items.add(best[1])
+                accounted = True
+        if not accounted:
+            seg = low[m.start():end].strip(" ,\n")
+            if seg and len(seg) <= 40:
+                segments.append(seg)
+    return segments
 
 def parse_order_with_gemini(text: str):
     """Gemini extracts items + quantities only. Pricing always from MENU."""
@@ -397,9 +510,11 @@ def parse_order_with_gemini(text: str):
                     items[name] = qty
         except Exception as e:
             print(f"Gemini Parsing Error: {e}")
-            items = {}
+            # Keep the locally matched items — a Gemini failure must not
+            # wipe out what the local (exact + fuzzy) parse already found.
     if not items:
         return None
+    unmatched = _unmatched_segments(text, items)
     lines = []
     kitchen_lines = []
     food_total = 0
@@ -415,6 +530,7 @@ def parse_order_with_gemini(text: str):
         "food_total": food_total,
         "delivery_charges": FIXED_DELIVERY_CHARGE,
         "grand_total": food_total + FIXED_DELIVERY_CHARGE,
+        "unmatched": unmatched,
     }
 
 def save_order_to_sheet(order_id, session):
@@ -496,6 +612,130 @@ def _find_order(identifier):
             print(f"Error reading sheet: {e}")
     return None
 
+def _parse_rider_tokens(tokens):
+    """Parse [name words..., phone, optional ETA] into
+    (rider_name, rider_phone, eta), or None if it is not rider info.
+    Phone must be 10-11 digits; ETA defaults to 30 minutes."""
+    toks = list(tokens)
+    if not toks:
+        return None
+    eta = 30
+    if (len(toks) >= 3 and toks[-1].isdigit() and len(toks[-1]) <= 2
+            and re.fullmatch(r"\d{10,11}", toks[-2] or "")):
+        eta = int(toks[-1])
+        toks = toks[:-1]
+    if len(toks) < 2:
+        return None
+    if not re.fullmatch(r"\d{10,11}", toks[-1] or ""):
+        return None
+    name = " ".join(toks[:-1]).strip()
+    if not name or not re.fullmatch(r"[A-Za-z][A-Za-z .'-]*", name):
+        return None
+    return (name, toks[-1], eta)
+
+def _customer_confirm_msg(order_id, grand_total, rider_name="", rider_phone="", eta=30):
+    """ORDER CONFIRMED for the customer. Rider lines appear only when a
+    rider was given — never as '-' placeholders."""
+    msg = (
+        f"🍳 *{BUSINESS_NAME.upper()} - ORDER CONFIRMED*\n\n"
+        f"🆔 *Order ID:* {order_id}\n\n"
+    )
+    if rider_name:
+        msg += (
+            f"👤 *Rider Name:* {rider_name}\n"
+            f"📞 *Rider Phone:* {rider_phone}\n"
+            f"⏱️ *Estimated Time:* {eta} Minutes\n"
+        )
+    msg += (
+        f"💰 *Cash to Pay:* {CUR} {grand_total}\n\n"
+        f"Your order is being prepared and will reach you soon. Thank you for choosing {BUSINESS_NAME}! ❤️"
+    )
+    return msg
+
+def _owner_confirm_msg(order_id, cust_name, cust_phone, rider_name="", rider_phone="", eta=30):
+    msg = (
+        f"✅ *KITCHEN CONFIRMED - {BUSINESS_NAME.upper()}*\n\n"
+        f"🆔 *Order ID:* {order_id}\n"
+        f"👤 *Customer:* {cust_name} ({cust_phone})\n\n"
+    )
+    if rider_name:
+        msg += (
+            f"🚴 *RIDER ASSIGNED:*\n"
+            f"• Rider Name: {rider_name}\n"
+            f"• Rider Phone: {rider_phone}\n"
+            f"⏱️ Estimated Time: {eta} Minutes\n\n"
+            f"📌 *Status:* Confirmed — rider assigned, customer ko update bhej diya gaya hai."
+        )
+    else:
+        msg += "📌 *Status:* Confirmed — customer ko update bhej diya gaya hai."
+    return msg
+
+def _confirm_order(order, rider_name="", rider_phone="", eta=30):
+    """Mark a confirmed order as kitchen-confirmed (optionally with a
+    rider) and notify customer + owner. Returns the order ID."""
+    global kitchen_pending_order, pending_rider_order
+    order_id = order.get("Order ID", "")
+    cust_phone = re.sub(r"[^\d+]", "", str(order.get("Phone", "")))
+    grand_total = order.get("Grand Total", "")
+    cust_name = order.get("Name", "Customer")
+    order["Status"] = "Confirmed"
+    order["Rider Name"] = rider_name
+    order["Rider Phone"] = rider_phone
+    update_order_status_in_sheet(order_id, "Confirmed", rider_name, rider_phone)
+    send_whatsapp_message(to_number=cust_phone, body=_customer_confirm_msg(order_id, grand_total, rider_name, rider_phone, eta))
+    send_whatsapp_message(to_number=OWNER_WHATSAPP, body=_owner_confirm_msg(order_id, cust_name, cust_phone, rider_name, rider_phone, eta))
+    if kitchen_pending_order is order:
+        kitchen_pending_order = None
+    if pending_rider_order is order:
+        pending_rider_order = None
+    return order_id
+
+def _attach_rider(order, rider_name, rider_phone, eta=30):
+    """Attach rider info to an already-confirmed order (kitchen follow-up
+    after a '1' confirm) and notify customer + owner. Returns the order ID."""
+    global pending_rider_order
+    order_id = order.get("Order ID", "")
+    cust_phone = re.sub(r"[^\d+]", "", str(order.get("Phone", "")))
+    grand_total = order.get("Grand Total", "")
+    order["Rider Name"] = rider_name
+    order["Rider Phone"] = rider_phone
+    update_order_status_in_sheet(order_id, "Confirmed", rider_name, rider_phone)
+    send_whatsapp_message(to_number=cust_phone, body=_customer_confirm_msg(order_id, grand_total, rider_name, rider_phone, eta))
+    send_whatsapp_message(to_number=OWNER_WHATSAPP, body=(
+        f"🚴 *RIDER ASSIGNED - {BUSINESS_NAME.upper()}*\n\n"
+        f"🆔 *Order ID:* {order_id}\n"
+        f"👤 *Rider Name:* {rider_name}\n"
+        f"📞 *Rider Phone:* {rider_phone}\n"
+        f"⏱️ *Estimated Time:* {eta} Minutes"
+    ))
+    if pending_rider_order is order:
+        pending_rider_order = None
+    return order_id
+
+def _not_confirm_order(order):
+    """Mark an order as not confirmed by the kitchen and notify customer
+    + owner. Returns the order ID."""
+    global kitchen_pending_order, pending_rider_order
+    order_id = order.get("Order ID", "")
+    cust_phone = re.sub(r"[^\d+]", "", str(order.get("Phone", "")))
+    cust_name = order.get("Name", "Customer")
+    order["Status"] = "Not Confirmed"
+    update_order_status_in_sheet(order_id, "Not Confirmed", "", "")
+    send_whatsapp_message(to_number=cust_phone, body=(
+        f"{MSG['order_not_confirmed']}\n\n🆔 Order ID: {order_id}"
+    ))
+    send_whatsapp_message(to_number=OWNER_WHATSAPP, body=(
+        f"❌ *ORDER NOT CONFIRMED - {BUSINESS_NAME.upper()}*\n\n"
+        f"🆔 *Order ID:* {order_id}\n"
+        f"👤 *Customer:* {cust_name} ({cust_phone})\n\n"
+        f"Kitchen ne order confirm nahi kiya. Customer ko inform kar diya gaya hai."
+    ))
+    if kitchen_pending_order is order:
+        kitchen_pending_order = None
+    if pending_rider_order is order:
+        pending_rider_order = None
+    return order_id
+
 def _twilio_signature_valid(request: Request, raw_body: bytes) -> bool:
     if not TWILIO_AUTH_TOKEN:
         return True
@@ -510,7 +750,7 @@ def _twilio_signature_valid(request: Request, raw_body: bytes) -> bool:
 
 @app.post("/whatsapp")
 async def whatsapp_webhook(request: Request):
-    global FIXED_DELIVERY_CHARGE
+    global FIXED_DELIVERY_CHARGE, kitchen_pending_order, pending_rider_order
     raw_body = await request.body()
     if not _twilio_signature_valid(request, raw_body):
         return Response(content="<Response></Response>", media_type="application/xml", status_code=403)
@@ -539,6 +779,66 @@ async def whatsapp_webhook(request: Request):
                 body=f"✅ Banner {sent} customers ko bhej diya{f' ({failed} failed)' if failed else ''}.",
             )
             return Response(content="<Response></Response>", media_type="application/xml")
+        # Optional rider follow-up after a "1" confirm: the kitchen's next
+        # message is rider info only if it looks like "<name> <phone>"
+        # (optional trailing ETA). Anything else drops the expectation and
+        # is processed normally below.
+        if pending_rider_order:
+            rider = _parse_rider_tokens(msg_text.split())
+            rider_order = pending_rider_order
+            pending_rider_order = None
+            if rider:
+                r_name, r_phone, r_eta = rider
+                rid_order_id = _attach_rider(rider_order, r_name, r_phone, r_eta)
+                send_whatsapp_message(
+                    to_number=user_phone,
+                    body=f"✅ Rider {r_name} ({r_phone}) order {rid_order_id} se attach kar diya gaya hai — customer ko update bhej diya gaya hai.",
+                )
+                return Response(content="<Response></Response>", media_type="application/xml")
+            # Not rider info — expectation dropped, process normally.
+        # Quick confirm: kitchen/owner replies "1" (optionally with rider
+        # in the same message: "1 <name> <phone> [minutes]") or "2".
+        # "1 naan" / "2 naan" are NOT choices — they fall through to the
+        # normal order flow below.
+        parts = msg_text.split()
+        choice = None
+        inline_rider = None
+        if msg_lower == "1":
+            choice = "1"
+        elif msg_lower == "2":
+            choice = "2"
+        elif len(parts) > 1 and parts[0] == "1":
+            inline_rider = _parse_rider_tokens(parts[1:])
+            if inline_rider:
+                choice = "1"
+        if choice:
+            order = kitchen_pending_order
+            if not order:
+                send_whatsapp_message(to_number=user_phone, body=MSG["no_pending"])
+                return Response(content="<Response></Response>", media_type="application/xml")
+            if choice == "1":
+                order_id = order.get("Order ID", "")
+                if inline_rider:
+                    r_name, r_phone, r_eta = inline_rider
+                    _confirm_order(order, r_name, r_phone, r_eta)
+                    send_whatsapp_message(
+                        to_number=user_phone,
+                        body=f"✅ Order {order_id} confirmed — rider {r_name} ({r_phone}) assigned, ETA {r_eta} min. Customer aur owner ko update bhej diya gaya hai.",
+                    )
+                else:
+                    _confirm_order(order)
+                    pending_rider_order = order
+                    send_whatsapp_message(
+                        to_number=user_phone,
+                        body=f"✅ Order {order_id} confirmed — customer aur owner ko update bhej diya gaya hai. Rider bhejna ho to naam aur number likh kar bhejein.",
+                    )
+                return Response(content="<Response></Response>", media_type="application/xml")
+            order_id = _not_confirm_order(order)
+            send_whatsapp_message(
+                to_number=user_phone,
+                body=f"✅ Order {order_id} not confirmed mark kar diya gaya hai — customer aur owner ko inform kar diya gaya hai.",
+            )
+            return Response(content="<Response></Response>", media_type="application/xml")
         if msg_lower.startswith("delivery"):
             parts = msg_text.split()
             if len(parts) >= 2 and parts[1].isdigit():
@@ -550,11 +850,40 @@ async def whatsapp_webhook(request: Request):
             return Response(content="<Response></Response>", media_type="application/xml")
         if msg_lower.startswith("confirm"):
             parts = msg_text.split()
-            if len(parts) < 4:
-                send_whatsapp_message(to_number=user_phone, body=MSG["confirm_usage"])
+            order_ref = rider_name = rider_phone = None
+            eta = 30
+            strict_ok = False
+            if len(parts) >= 4:
+                order_ref, rider_name, rider_phone = parts[1], parts[2], parts[3]
+                eta = int(parts[4]) if len(parts) >= 5 and parts[4].isdigit() else 30
+                if _find_order(order_ref):
+                    strict_ok = True
+            if not strict_ok:
+                # Tolerant scan for natural-language confirms, e.g.
+                # "confirmed order 20261122-4049 Rider name Ali 03007724856".
+                order_ref = rider_name = rider_phone = None
+                eta = 30
+                m_id = re.search(r"(?:ORD-)?(\d{8}-\d+)", msg_text, re.IGNORECASE)
+                if m_id:
+                    order_ref = "ORD-" + m_id.group(1)
+                m_rider = re.search(
+                    r"rider\s+name\s+([A-Za-z][A-Za-z .'-]*?)\s+(\d{10,11})(?:\s+(\d{1,2}))?",
+                    msg_text, re.IGNORECASE)
+                if m_rider:
+                    rider_name = m_rider.group(1).strip()
+                    rider_phone = m_rider.group(2)
+                    if m_rider.group(3):
+                        eta = int(m_rider.group(3))
+            if not order_ref or not rider_name or not rider_phone:
+                if len(parts) >= 4:
+                    # Strict format was given but the order was not found.
+                    send_whatsapp_message(
+                        to_number=user_phone,
+                        body=f"❌ Order not found for {parts[1]}. Order ID ya customer phone check karke dobara bhejein.",
+                    )
+                else:
+                    send_whatsapp_message(to_number=user_phone, body=MSG["confirm_usage"])
                 return Response(content="<Response></Response>", media_type="application/xml")
-            order_ref, rider_name, rider_phone = parts[1], parts[2], parts[3]
-            eta = int(parts[4]) if len(parts) >= 5 and parts[4].isdigit() else 30
             order = _find_order(order_ref)
             if not order:
                 send_whatsapp_message(
@@ -562,35 +891,7 @@ async def whatsapp_webhook(request: Request):
                     body=f"❌ Order not found for {order_ref}. Order ID ya customer phone check karke dobara bhejein.",
                 )
                 return Response(content="<Response></Response>", media_type="application/xml")
-            order_id = order.get("Order ID", order_ref)
-            cust_phone = re.sub(r"[^\d+]", "", str(order.get("Phone", "")))
-            grand_total = order.get("Grand Total", "")
-            cust_name = order.get("Name", "Customer")
-            order["Status"] = "Confirmed"
-            order["Rider Name"] = rider_name
-            order["Rider Phone"] = rider_phone
-            update_order_status_in_sheet(order_id, "Confirmed", rider_name, rider_phone)
-            customer_msg = (
-                f"🍳 *{BUSINESS_NAME.upper()} - ORDER CONFIRMED*\n\n"
-                f"🆔 *Order ID:* {order_id}\n\n"
-                f"👤 *Rider Name:* {rider_name}\n"
-                f"📞 *Rider Phone:* {rider_phone}\n"
-                f"⏱️ *Estimated Time:* {eta} Minutes\n"
-                f"💰 *Cash to Pay:* {CUR} {grand_total}\n\n"
-                f"Your order is being prepared and will reach you soon. Thank you for choosing {BUSINESS_NAME}! ❤️"
-            )
-            send_whatsapp_message(to_number=cust_phone, body=customer_msg)
-            owner_msg = (
-                f"✅ *KITCHEN CONFIRMED - {BUSINESS_NAME.upper()}*\n\n"
-                f"🆔 *Order ID:* {order_id}\n"
-                f"👤 *Customer:* {cust_name} ({cust_phone})\n\n"
-                f"🚴 *RIDER ASSIGNED:*\n"
-                f"• Rider Name: {rider_name}\n"
-                f"• Rider Phone: {rider_phone}\n"
-                f"⏱️ Estimated Time: {eta} Minutes\n\n"
-                f"📌 *Status:* Confirmed — rider assigned, customer ko update bhej diya gaya hai."
-            )
-            send_whatsapp_message(to_number=OWNER_WHATSAPP, body=owner_msg)
+            order_id = _confirm_order(order, rider_name, rider_phone, eta)
             send_whatsapp_message(
                 to_number=user_phone,
                 body=f"✅ Order {order_id} confirmed — rider {rider_name} ({rider_phone}) assigned, ETA {eta} min. Customer aur owner ko update bhej diya gaya hai.",
@@ -793,9 +1094,15 @@ async def whatsapp_webhook(request: Request):
             f"{parsed_order['items_summary']}\n\n"
             f"🍔 {MSG['food_total']}: {CUR} {parsed_order['food_total']}\n"
             f"🚚 {MSG['delivery']}: {CUR} {parsed_order['delivery_charges']}\n"
-            f"💰 *{MSG['grand_total']}: {CUR} {parsed_order['grand_total']}*\n\n"
-            f"👤 {MSG['ask_name']}"
+            f"💰 *{MSG['grand_total']}: {CUR} {parsed_order['grand_total']}*"
         )
+        if parsed_order.get("unmatched"):
+            reply += (
+                f"\n\n⚠️ Ye samajh nahi aaya, is liye add nahi hua: "
+                f"{', '.join(parsed_order['unmatched'])}. "
+                f"Agar ye bhi chahiye to sahi spelling likh kar bhejein."
+            )
+        reply += f"\n\n👤 {MSG['ask_name']}"
         send_whatsapp_message(to_number=user_phone, body=reply)
         return Response(content="<Response></Response>", media_type="application/xml")
 
@@ -851,14 +1158,16 @@ async def whatsapp_webhook(request: Request):
         )
         send_whatsapp_message(to_number=user_phone, body=cust_msg)
         if KITCHEN_WHATSAPP:
+            kitchen_pending_order = confirmed_orders[order_id]
             kitchen_msg = (
                 f"🍳 *KITCHEN ORDER ALERT*\n"
                 f"🆔 *Order ID:* {order_id}\n\n"
                 f"🍲 *ITEMS TO PREPARE:*\n"
                 f"{session['order_data']['kitchen_items']}\n\n"
                 f"📌 *Status:* Pending Preparation\n\n"
-                f"Order tayyar ho jaye to confirm karne ke liye bhejein:\n"
-                f"`Confirm {order_id} [Rider Name] [Rider Phone] [Minutes]`"
+                f"Order confirm karne ke liye jawab dein:\n"
+                f"1 = Order Confirmed\n"
+                f"2 = Not Confirmed"
             )
             send_whatsapp_message(to_number=KITCHEN_WHATSAPP, body=kitchen_msg)
         if OWNER_WHATSAPP:
@@ -886,6 +1195,7 @@ async def whatsapp_webhook(request: Request):
 # (A WordPress bridge plugin for this endpoint is deferred to a later version.)
 @app.post("/web-order")
 async def web_order(request: Request):
+    global kitchen_pending_order
     try:
         data = await request.json()
     except Exception:
@@ -901,11 +1211,24 @@ async def web_order(request: Request):
         return {"status": "error", "message": "No menu item found in order_text."}
     order_id = f"ORD-{datetime.now().strftime('%Y%m%d')}-{phone[-4:]}"
     session = {"name": name, "phone": phone, "address": address, "order_data": parsed}
+    # Register in memory (same as the WhatsApp flow) so kitchen Confirm /
+    # the 1/2 quick-confirm and owner Done work even with no Sheet.
+    confirmed_orders[order_id] = {
+        "Order ID": order_id,
+        "Name": name,
+        "Phone": phone,
+        "Address": address,
+        "Items": parsed["items_summary"],
+        "Grand Total": parsed["grand_total"],
+        "Status": "Pending",
+    }
     saved = save_order_to_sheet(order_id, session)
     if KITCHEN_WHATSAPP:
+        kitchen_pending_order = confirmed_orders[order_id]
         send_whatsapp_message(to_number=KITCHEN_WHATSAPP, body=(
             f"🍳 *KITCHEN ORDER ALERT (WEB)*\n🆔 *Order ID:* {order_id}\n\n"
-            f"🍲 *ITEMS TO PREPARE:*\n{parsed['kitchen_items']}\n\n📌 *Status:* Pending Preparation"))
+            f"🍲 *ITEMS TO PREPARE:*\n{parsed['kitchen_items']}\n\n📌 *Status:* Pending Preparation\n\n"
+            f"Order confirm karne ke liye jawab dein:\n1 = Order Confirmed\n2 = Not Confirmed"))
     if OWNER_WHATSAPP:
         send_whatsapp_message(to_number=OWNER_WHATSAPP, body=(
             f"🔔 *NEW WEB ORDER - OWNER ALERT*\n\n🆔 *Order ID:* {order_id}\n"
@@ -913,7 +1236,8 @@ async def web_order(request: Request):
             f"🍲 *ITEMS:*\n{parsed['items_summary']}\n\n"
             f"💰 *{MSG['grand_total']}: {CUR} {parsed['grand_total']}*"))
     return {"status": "ok", "order_id": order_id, "total": parsed["grand_total"],
-            "currency": CUR, "sheet_saved": bool(saved)}
+            "currency": CUR, "sheet_saved": bool(saved),
+            "unmatched": parsed.get("unmatched", [])}
 
 @app.get("/settings", response_class=HTMLResponse)
 async def get_settings_form(_admin: str = Depends(require_admin)):
