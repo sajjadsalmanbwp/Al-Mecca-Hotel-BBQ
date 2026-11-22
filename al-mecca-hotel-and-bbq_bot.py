@@ -42,7 +42,7 @@ BUSINESS_NAME = "Al Mecca Hotel and BBQ"
 BUSINESS_TYPE = "restaurant"
 CONFIG_FILE = "al-mecca-hotel-and-bbq_config.json"
 CUR = "Rs."
-MSG = {"welcome": "Assalam o Alaikum! {name} mein khush amdeed.", "menu_footer": "Order likh kar bhejein, masalan: '2 chicken biryani, 1 naan'", "ask_name": "Step 1 of 3: Barah-e-karam apna mukammal naam likh kar bhejein.", "ask_address": "Step 2 of 3: Ab apna mukammal delivery address likhein.", "ask_phone": "Step 3 of 3: Apna phone number likhein (ya agar yehi WhatsApp number hai to 'Same' likh kar bhejein).", "not_understood": "Maaf kijiye, main aapka order samajh nahi paya. Neeche menu se choose karein.", "cancelled": "Order cancel kar diya gaya hai. Naya order ke liye menu se choose karein.", "confirmed": "Aap ka order confirm ho gaya hai aur kitchen ko bhej diya gaya hai. {name} muntakhab karne ka shukriya!", "thanks_name": "Shukriya {name} sahib! ", "name_too_short": "Please apna sahi naam likhein.", "address_too_short": "Please apna mukammal address likhein.", "phone_invalid": "Please sahi phone number likhein, ya 'Same' likhein.", "order_title": "ORDER SUMMARY", "food_total": "Food Total", "delivery": "Delivery Charges", "grand_total": "Total", "dispatch_usage": "Usage: Done <Customer_Phone> <Rider_Name> <Rider_Phone>", "delivery_usage": "Usage: Delivery 200", "confirm_usage": "Usage: Confirm <Order_ID_or_Phone> <Rider_Name> <Rider_Phone> [Minutes] — masalan: Confirm ORD-20261118-4567 Ahmed 03001234567 30", "not_owner": "❌ Menu change sirf owner kar sakta hai. Order ke liye sirf item aur quantity likhein, masalan: '2 chicken tikka, 1 naan'.", "price_usage": "Usage: Price <Item> <New Price> — masalan: Price chicken tikka 400", "add_usage": "Usage: Add <Item> <Price> — masalan: Add zinger burger 350", "remove_usage": "Usage: Remove <Item> — masalan: Remove raita", "subscribe_invite": "🎉 Offers ki khabar aap ko milegi — jab bhi koi offer aayegi, aap ko message bhej diya jayega.", "offer_usage": "Usage: Offer <message> — masalan: Offer BBQ Feast — Flat 20% OFF, sirf is haftay!", "not_owner_offer": "❌ Offers sirf owner bhej sakta hai.", "call_offer_usage": "Usage: CallOffer <message> — masalan: CallOffer BBQ Feast — Flat 20% OFF, sirf is haftay!", "no_voice_number": "📞 Voice number set nahi hai — Railway Variables me TWILIO_VOICE_NUMBER lagayein.", "no_pending": "❌ Abhi koi pending order nahi hai.", "order_not_confirmed": "Maaf kijiye, aap ka order confirm nahi ho saka. Barah-e-karam dobara order karein ya restaurant ko call karein. Shukriya!"}
+MSG = {"welcome": "Assalam o Alaikum! {name} mein khush amdeed.", "menu_footer": "Order likh kar bhejein, masalan: '2 chicken biryani, 1 naan'", "ask_name": "Step 1 of 3: Barah-e-karam apna mukammal naam likh kar bhejein.", "correct_prompt": "Agar ye item bhi chahiye to sahi spelling likh kar bhejein, warna apna naam likh kar bhejein.", "ask_address": "Step 2 of 3: Ab apna mukammal delivery address likhein.", "ask_phone": "Step 3 of 3: Apna phone number likhein (ya agar yehi WhatsApp number hai to 'Same' likh kar bhejein).", "not_understood": "Maaf kijiye, main aapka order samajh nahi paya. Neeche menu se choose karein.", "cancelled": "Order cancel kar diya gaya hai. Naya order ke liye menu se choose karein.", "confirmed": "Aap ka order confirm ho gaya hai aur kitchen ko bhej diya gaya hai. {name} muntakhab karne ka shukriya!", "thanks_name": "Shukriya {name} sahib! ", "name_too_short": "Please apna sahi naam likhein.", "address_too_short": "Please apna mukammal address likhein.", "phone_invalid": "Please sahi phone number likhein, ya 'Same' likhein.", "order_title": "ORDER SUMMARY", "food_total": "Food Total", "delivery": "Delivery Charges", "grand_total": "Total", "dispatch_usage": "Usage: Done <Customer_Phone> <Rider_Name> <Rider_Phone>", "delivery_usage": "Usage: Delivery 200", "confirm_usage": "Usage: Confirm <Order_ID_or_Phone> <Rider_Name> <Rider_Phone> [Minutes] — masalan: Confirm ORD-20261118-4567 Ahmed 03001234567 30", "not_owner": "❌ Menu change sirf owner kar sakta hai. Order ke liye sirf item aur quantity likhein, masalan: '2 chicken tikka, 1 naan'.", "price_usage": "Usage: Price <Item> <New Price> — masalan: Price chicken tikka 400", "add_usage": "Usage: Add <Item> <Price> — masalan: Add zinger burger 350", "remove_usage": "Usage: Remove <Item> — masalan: Remove raita", "subscribe_invite": "🎉 Offers ki khabar aap ko milegi — jab bhi koi offer aayegi, aap ko message bhej diya jayega.", "offer_usage": "Usage: Offer <message> — masalan: Offer BBQ Feast — Flat 20% OFF, sirf is haftay!", "not_owner_offer": "❌ Offers sirf owner bhej sakta hai.", "call_offer_usage": "Usage: CallOffer <message> — masalan: CallOffer BBQ Feast — Flat 20% OFF, sirf is haftay!", "no_voice_number": "📞 Voice number set nahi hai — Railway Variables me TWILIO_VOICE_NUMBER lagayein.", "no_pending": "❌ Abhi koi pending order nahi hai.", "order_not_confirmed": "Maaf kijiye, aap ka order confirm nahi ho saka. Barah-e-karam dobara order karein ya restaurant ko call karein. Shukriya!"}
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
@@ -300,6 +300,7 @@ async def offer_call(text: str = ""):
 
 STATE_IDLE = "IDLE"
 STATE_AWAITING_NAME = "AWAITING_NAME"
+STATE_AWAITING_CORRECTION = "AWAITING_CORRECTION"
 STATE_AWAITING_ADDRESS = "AWAITING_ADDRESS"
 STATE_AWAITING_PHONE = "AWAITING_PHONE"
 
@@ -487,6 +488,40 @@ def _unmatched_segments(text: str, items: dict) -> list:
                 segments.append(seg)
     return segments
 
+def _order_data_from_items(items: dict, unmatched: list) -> dict:
+    """Build the order_data dict (summary lines + totals) from an items
+    dict {name: qty}. Prices always come from MENU, never from Gemini."""
+    lines = []
+    kitchen_lines = []
+    food_total = 0
+    for name, qty in items.items():
+        price = MENU[name]
+        total = price * qty
+        food_total += total
+        lines.append(f"• {name.title()} x{qty} - {CUR} {total}")
+        kitchen_lines.append(f"• {name.title()} x{qty}")
+    return {
+        "items": dict(items),
+        "items_summary": "\n".join(lines),
+        "kitchen_items": "\n".join(kitchen_lines),
+        "food_total": food_total,
+        "delivery_charges": FIXED_DELIVERY_CHARGE,
+        "grand_total": food_total + FIXED_DELIVERY_CHARGE,
+        "unmatched": list(unmatched),
+    }
+
+
+def _order_summary_text(order_data: dict) -> str:
+    """The ORDER SUMMARY block shown after an order (or a correction)."""
+    return (
+        f"📝 *{MSG['order_title']}*\n"
+        f"{order_data['items_summary']}\n\n"
+        f"🍔 {MSG['food_total']}: {CUR} {order_data['food_total']}\n"
+        f"🚚 {MSG['delivery']}: {CUR} {order_data['delivery_charges']}\n"
+        f"💰 *{MSG['grand_total']}: {CUR} {order_data['grand_total']}*"
+    )
+
+
 def parse_order_with_gemini(text: str):
     """Gemini extracts items + quantities only. Pricing always from MENU."""
     items = parse_menu_items_locally(text)
@@ -515,23 +550,7 @@ def parse_order_with_gemini(text: str):
     if not items:
         return None
     unmatched = _unmatched_segments(text, items)
-    lines = []
-    kitchen_lines = []
-    food_total = 0
-    for name, qty in items.items():
-        price = MENU[name]
-        total = price * qty
-        food_total += total
-        lines.append(f"• {name.title()} x{qty} - {CUR} {total}")
-        kitchen_lines.append(f"• {name.title()} x{qty}")
-    return {
-        "items_summary": "\n".join(lines),
-        "kitchen_items": "\n".join(kitchen_lines),
-        "food_total": food_total,
-        "delivery_charges": FIXED_DELIVERY_CHARGE,
-        "grand_total": food_total + FIXED_DELIVERY_CHARGE,
-        "unmatched": unmatched,
-    }
+    return _order_data_from_items(items, unmatched)
 
 def save_order_to_sheet(order_id, session):
     sheet = get_google_sheet()
@@ -1087,24 +1106,71 @@ async def whatsapp_webhook(request: Request):
             )
             return Response(content="<Response></Response>", media_type="application/xml")
         session["order_data"] = parsed_order
-        session["state"] = STATE_AWAITING_NAME
+        if parsed_order.get("unmatched"):
+            # Something was not understood: stay in the correction step so
+            # the customer can send the corrected item instead of it being
+            # swallowed as their name. The name step starts only when the
+            # order is fully understood (or the customer just sends a name).
+            session["state"] = STATE_AWAITING_CORRECTION
+        else:
+            session["state"] = STATE_AWAITING_NAME
         user_sessions[user_phone] = session
-        reply = (
-            f"📝 *{MSG['order_title']}*\n"
-            f"{parsed_order['items_summary']}\n\n"
-            f"🍔 {MSG['food_total']}: {CUR} {parsed_order['food_total']}\n"
-            f"🚚 {MSG['delivery']}: {CUR} {parsed_order['delivery_charges']}\n"
-            f"💰 *{MSG['grand_total']}: {CUR} {parsed_order['grand_total']}*"
-        )
+        reply = _order_summary_text(parsed_order)
         if parsed_order.get("unmatched"):
             reply += (
                 f"\n\n⚠️ Ye samajh nahi aaya, is liye add nahi hua: "
                 f"{', '.join(parsed_order['unmatched'])}. "
-                f"Agar ye bhi chahiye to sahi spelling likh kar bhejein."
+                f"{MSG['correct_prompt']}"
             )
-        reply += f"\n\n👤 {MSG['ask_name']}"
+        else:
+            reply += f"\n\n👤 {MSG['ask_name']}"
         send_whatsapp_message(to_number=user_phone, body=reply)
         return Response(content="<Response></Response>", media_type="application/xml")
+
+    if current_state == STATE_AWAITING_CORRECTION:
+        correction = parse_order_with_gemini(msg_text)
+        if correction:
+            # Merge the corrected items into the current order;
+            # quantities add to what is already there.
+            merged = dict(session["order_data"].get("items", {}))
+            for name, qty in correction.get("items", {}).items():
+                merged[name] = merged.get(name, 0) + qty
+            session["order_data"] = _order_data_from_items(
+                merged, correction.get("unmatched", []))
+            user_sessions[user_phone] = session
+            reply = _order_summary_text(session["order_data"])
+            if session["order_data"].get("unmatched"):
+                reply += (
+                    f"\n\n⚠️ Ye samajh nahi aaya, is liye add nahi hua: "
+                    f"{', '.join(session['order_data']['unmatched'])}. "
+                    f"{MSG['correct_prompt']}"
+                )
+            else:
+                session["state"] = STATE_AWAITING_NAME
+                user_sessions[user_phone] = session
+                reply += f"\n\n👤 {MSG['ask_name']}"
+            send_whatsapp_message(to_number=user_phone, body=reply)
+            return Response(content="<Response></Response>", media_type="application/xml")
+        # No menu items in this message. A message with a number in it is
+        # an order attempt, not a name (names do not contain digits) — the
+        # customer probably re-sent the misspelled item, so keep them in
+        # the correction step instead of swallowing it as their name.
+        if re.search(r"\d", msg_text):
+            reply = _order_summary_text(session["order_data"])
+            still_unmatched = _unmatched_segments(msg_text, {})
+            if still_unmatched:
+                reply += (
+                    f"\n\n⚠️ Ye samajh nahi aaya, is liye add nahi hua: "
+                    f"{', '.join(still_unmatched)}. "
+                    f"{MSG['correct_prompt']}"
+                )
+            send_whatsapp_message(to_number=user_phone, body=reply)
+            return Response(content="<Response></Response>", media_type="application/xml")
+        # No menu items in this message — it is the customer's name.
+        session["state"] = STATE_AWAITING_NAME
+        current_state = STATE_AWAITING_NAME
+        user_sessions[user_phone] = session
+        # Fall through to the AWAITING_NAME block below.
 
     if current_state == STATE_AWAITING_NAME:
         if len(msg_text) < 2:
