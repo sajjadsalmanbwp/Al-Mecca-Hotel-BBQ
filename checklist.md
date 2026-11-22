@@ -8,6 +8,8 @@ Tick each item off only when it is really done.
 - [x] WhatsApp chatbot `al-mecca-hotel-and-bbq_bot.py` (generated, compiles)
 - [x] Calling agent `al-mecca-hotel-and-bbq_calling_agent.py` (generated, compiles)
 - [x] Config `al-mecca-hotel-and-bbq_config.json` (prices from the spec)
+- [x] Live dashboard `dashboard.html` (served by the bot at GET /dashboard,
+      admin login, polls GET /api/orders every 10 seconds)
 - [x] `requirements.txt`, `.env.template` (placeholders only)
 - [x] `setup.md`
 - [x] `manifest.json` — status: draft
@@ -42,6 +44,17 @@ Tick each item off only when it is really done.
 - [ ] Typo orders still parse: "2 chiken tikka, 1 naan" → Rs. 950; "1 tika, 1 naan" → Rs. 570; "2 biryani, 1 naan" → Rs. 890; "2 seekh kbab, 1 naan" → Rs. 1,090. Prices always from the config menu, never from Gemini
 - [ ] Partial order is kept, not rejected: "2 seekh kabab / 1malai boti / 3 chicken bargain / 10 nan / 2 cold drink" → seekh kabab x2, malai boti x1, naan x10, cold drink x2 = Rs. 2,160, plus a short note that "3 chicken bargain" was not understood (order still goes through; Gemini maps it to chicken biryani when it works)
 - [ ] Order correction: after a summary with an unmatched item the bot does NOT ask for the name yet — it says "Agar ye item bhi chahiye to sahi spelling likh kar bhejein, warna apna naam likh kar bhejein." Customer sends "3 chicken biryani" → updated summary Rs. 3,210 (food 3,060 + delivery 150), no unmatched note, then the name step. A typo correction ("3 chiken biryani") works too (fuzzy match). Sending the name directly after the summary skips the correction and the order goes through at Rs. 2,160. A correction that adds to an existing item adds quantities (e.g. "2 seekh kabab" on top → Seekh Kabab x4). "cancel" during the correction prompt cancels the order. A message with a number but no menu item (e.g. re-sending "3 chicken bargain") is NOT taken as the name — the bot repeats the note and stays in the correction step
+- [ ] Live dashboard: open `<domain>/dashboard` with the admin login → real
+      orders appear (no AM-101/102/103 sample orders, no simulate button);
+      stats (total orders, pending, confirmed, dispatched, total sales) match
+      the orders; a new WhatsApp/web order appears within ~10 seconds; the
+      "Last updated" time refreshes. Without the admin login the page is
+      denied (401). Kitchen Confirm button on a Pending order → customer gets
+      ORDER CONFIRMED, owner gets KITCHEN CONFIRMED, order shows Confirmed.
+      Dispatch button on a Confirmed order (rider name + phone) → customer
+      gets ORDER DISPATCHED, owner gets DISPATCH REPORT, order shows
+      Dispatched. Dashboard test suite: 41/41 checks pass
+      (`al_mecca_dashboard_test.py`)
 - [ ] Kitchen + owner alerts received
 - [ ] Kitchen alert ends with "1 = Order Confirmed / 2 = Not Confirmed". Kitchen replies "1" → customer gets ORDER CONFIRMED with NO rider lines, owner gets KITCHEN CONFIRMED, kitchen gets an ack. Rider is optional: kitchen then sends "Ali 03007724856" → customer gets the rider update (name + phone + ETA 30 min), owner gets RIDER ASSIGNED. "1 Ahmed 03001234567 30" in one message works too. Kitchen replies "2" → customer gets the not-confirmed message, owner is notified. A "1" from any number that is not the kitchen/owner confirms nothing. A "1" with no pending order → "Abhi koi pending order nahi hai."
 - [ ] Kitchen sends `Confirm <order-id> <rider> <phone> [minutes]` → customer gets rider name + phone + ETA, owner gets update, Sheet status becomes "Confirmed", dashboard shows Confirmed. Natural wording also works: "confirmed order 20261122-4049 Rider name Ali 03007724856" (order ID may be written without the ORD- prefix)
