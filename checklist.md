@@ -39,13 +39,17 @@ Tick each item off only when it is really done.
 
 - [ ] "Hi" → welcome + menu, NO order created
 - [ ] Test order totals match the config menu
+- [ ] Typo orders still parse: "2 chiken tikka, 1 naan" → Rs. 950; "1 tika, 1 naan" → Rs. 570; "2 biryani, 1 naan" → Rs. 890; "2 seekh kbab, 1 naan" → Rs. 1,090. Prices always from the config menu, never from Gemini
+- [ ] Partial order is kept, not rejected: "2 seekh kabab / 1malai boti / 3 chicken bargain / 10 nan / 2 cold drink" → seekh kabab x2, malai boti x1, naan x10, cold drink x2 = Rs. 2,160, plus a short note that "3 chicken bargain" was not understood (order still goes through; Gemini maps it to chicken biryani when it works)
 - [ ] Kitchen + owner alerts received
-- [ ] Kitchen sends `Confirm <order-id> <rider> <phone> [minutes]` → customer gets rider name + phone + ETA, owner gets update, Sheet status becomes "Confirmed", dashboard shows Confirmed
+- [ ] Kitchen alert ends with "1 = Order Confirmed / 2 = Not Confirmed". Kitchen replies "1" → customer gets ORDER CONFIRMED with NO rider lines, owner gets KITCHEN CONFIRMED, kitchen gets an ack. Rider is optional: kitchen then sends "Ali 03007724856" → customer gets the rider update (name + phone + ETA 30 min), owner gets RIDER ASSIGNED. "1 Ahmed 03001234567 30" in one message works too. Kitchen replies "2" → customer gets the not-confirmed message, owner is notified. A "1" from any number that is not the kitchen/owner confirms nothing. A "1" with no pending order → "Abhi koi pending order nahi hai."
+- [ ] Kitchen sends `Confirm <order-id> <rider> <phone> [minutes]` → customer gets rider name + phone + ETA, owner gets update, Sheet status becomes "Confirmed", dashboard shows Confirmed. Natural wording also works: "confirmed order 20261122-4049 Rider name Ali 03007724856" (order ID may be written without the ORD- prefix)
 - [ ] Owner sends `Price <item> <new price>` → price updates + saves to config JSON; `Add <item> <price>` adds an item; `Remove <item>` removes it; non-owner gets "sirf owner" reply
 - [ ] Owner sends `Offer <text>` or a banner image → text/banner go to EVERY customer who ever ordered (Sheet Phone column + this run's orders); `CallOffer <text>` → calling agent calls every customer and speaks the offer — no subscribe/unsubscribe at all; `Subscribers` shows the total customer count
 - [ ] Owner sends `CallOffer <text>` → calling agent calls each subscribed customer and speaks the offer (needs TWILIO_VOICE_NUMBER + SERVER_URL; CALLING_AGENT_URL optional — when set, the calling agent serves /offer-call, else the bot does)
 - [ ] Google Sheet row appears with Status "Pending"
 - [ ] Calling agent test call completes an order
+- [ ] Known limitation: order IDs are ORD-YYYYMMDD-last-4-of-phone, so two orders from the same phone on the same day share one ID and the second overwrites the first in the bot's memory (the Sheet keeps both rows). Kitchen "1" always confirms the LATEST order. A proper fix (unique order IDs) is a separate change.
 
 ## Live (later)
 
