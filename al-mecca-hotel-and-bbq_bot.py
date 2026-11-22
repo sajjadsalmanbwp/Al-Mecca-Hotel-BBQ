@@ -16,6 +16,7 @@
 #   ADMIN_USERNAME, ADMIN_PASSWORD
 #   (do NOT set FIXED_DELIVERY_CHARGE — the delivery charge comes from
 #   the config JSON unless that variable is set)
+import concurrent.futures
 import difflib
 import json
 import os
@@ -27,8 +28,8 @@ from datetime import datetime
 from urllib.parse import parse_qs, urlencode
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, File, UploadFile, Response, Request, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, File, UploadFile, Response, Request, Depends, HTTPException, status, BackgroundTasks
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from twilio.rest import Client
 from twilio.request_validator import RequestValidator
@@ -406,6 +407,119 @@ def _transcribe_audio(audio_bytes: bytes, mime_type: str) -> str:
     except Exception as e:
         print(f"Audio transcription error: {e}")
         return ""
+
+
+TRANSCRIBE_TIMEOUT_SECONDS = 20  # hard cap on one Gemini transcription call.
+# Real transcriptions of short voice notes finish in seconds, so 20s is
+# generous headroom (~4-10x) while keeping the worst case short: a
+# customer whose transcription hangs gets the "type your order" reply
+# within ~20s instead of waiting a minute. It also matches the 20s
+# media-download timeout above.
+
+def _transcribe_audio_timed(audio_bytes: bytes, mime_type: str,
+                            timeout: float = TRANSCRIBE_TIMEOUT_SECONDS) -> str:
+    """Run _transcribe_audio with a HARD timeout. Returns text or "".
+
+    The Gemini call has no timeout of its own: on real audio it can hang
+    indefinitely, and a hang inside the /whatsapp webhook means Twilio
+    gets no reply at all (and retries). A fresh thread per call is used
+    so a hung call cannot block later transcriptions, and the executor
+    is shut down WITHOUT waiting, so the timeout is real — the caller
+    gets "" back at the deadline even though the hung thread lingers.
+    """
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        fut = ex.submit(_transcribe_audio, audio_bytes, mime_type)
+        try:
+            return fut.result(timeout=timeout) or ""
+        except concurrent.futures.TimeoutError:
+            print(f"Audio transcription timed out after {timeout}s")
+            return ""
+        except Exception as e:
+            print(f"Audio transcription error: {e}")
+            return ""
+    finally:
+        ex.shutdown(wait=False, cancel_futures=False)
+
+
+def _process_voice_note(user_phone: str, media_url: str, media_content_type: str):
+    """Background task for one WhatsApp voice note: download + transcribe,
+    then handle the transcribed text exactly like a typed message.
+
+    Runs AFTER the webhook has already answered Twilio, so a slow or
+    hanging transcription can never silence the bot: any failure (or an
+    empty transcription) sends the voice_note_failed reply instead, and
+    even an unexpected error in this task falls back to that reply.
+    """
+    try:
+        try:
+            audio_bytes = _download_twilio_media(media_url)
+        except Exception as e:
+            print(f"Voice note download error: {e}")
+            audio_bytes = None
+        transcribed = ""
+        if audio_bytes:
+            transcribed = _transcribe_audio_timed(
+                audio_bytes, media_content_type,
+                timeout=TRANSCRIBE_TIMEOUT_SECONDS)
+        if not transcribed:
+            # Not understood: answer with the greeting voice note + menu,
+            # never just silence.
+            _send_voice_greeting(user_phone)
+            return
+        print(f"Voice note transcribed for {user_phone}: {transcribed[:120]}")
+        _handle_text_message(user_phone, transcribed, media_url="",
+                             from_voice_note=True)
+    except Exception as e:
+        # Last resort: never leave a voice-note customer in silence.
+        print(f"Voice note background task error: {e}")
+        try:
+            _send_voice_greeting(user_phone)
+        except Exception:
+            pass
+
+
+# Greeting voice note: when a voice note arrives and is not understood
+# (or just says "hi"/"salam"), the bot answers with a VOICE NOTE
+# greeting — Welcome + business name — plus the menu as text, instead
+# of only a "samajh nahi aayi" text. The audio is generated once with
+# gTTS (free, English voice reading the Roman Urdu greeting — the same
+# approach as the calling agent's Twilio voice) and shipped next to the
+# bot as al-mecca-hotel-and-bbq_greeting.ogg; the owner can replace that
+# file with his own recorded greeting any time (same filename, OGG
+# Opus). Twilio must fetch the audio from a public URL, so it is served
+# at GET /greeting-voice (no auth) and needs SERVER_URL set.
+GREETING_AUDIO_FILE = "al-mecca-hotel-and-bbq_greeting.ogg"
+GREETING_AUDIO_ENDPOINT = "/greeting-voice"
+GREETING_TEXT = ("Assalam o Alaikum! Al Mecca Hotel and BBQ mein khush "
+                 "amdeed. Apna order bol kar ya likh kar bhejein, shukriya!")
+
+
+def _greeting_voice_url() -> str:
+    """Public URL of the greeting voice note, or "" if unavailable."""
+    if not SERVER_URL:
+        return ""
+    audio_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), GREETING_AUDIO_FILE)
+    if not os.path.exists(audio_path):
+        return ""
+    return SERVER_URL.rstrip("/") + GREETING_AUDIO_ENDPOINT
+
+
+def _send_voice_greeting(to_number: str):
+    """Greeting for a voice-note customer whose note was NOT understood:
+    the greeting VOICE NOTE (audio) + the menu as text. Falls back to
+    the old text reply when the audio URL is unavailable (SERVER_URL
+    unset or the audio file missing) — the customer still gets an
+    answer, never silence. (For a voice note that WAS understood and
+    just says "hi", the greeting branch in _handle_text_message sends
+    the text welcome + menu instead — see there.)"""
+    audio_url = _greeting_voice_url()
+    if audio_url:
+        send_whatsapp_message(to_number=to_number, body="", media_url=audio_url)
+        send_whatsapp_message(to_number=to_number, body=menu_text())
+    else:
+        send_whatsapp_message(to_number=to_number, body=MSG["voice_note_failed"])
 
 
 def _normalise(text: str) -> str:
@@ -860,9 +974,20 @@ def _twilio_signature_valid(request: Request, raw_body: bytes) -> bool:
     params = {k: v[0] for k, v in parse_qs(raw_body.decode("utf-8", "ignore")).items()}
     return validator.validate(url, params, signature)
 
+@app.get("/greeting-voice")
+async def greeting_voice():
+    """Public greeting voice note (audio/ogg) — Twilio fetches this URL
+    to deliver the greeting as a WhatsApp voice note. No auth: the URL
+    must be fetchable by Twilio."""
+    audio_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), GREETING_AUDIO_FILE)
+    if not os.path.exists(audio_path):
+        return Response(status_code=404)
+    return FileResponse(audio_path, media_type="audio/ogg")
+
+
 @app.post("/whatsapp")
-async def whatsapp_webhook(request: Request):
-    global FIXED_DELIVERY_CHARGE, kitchen_pending_order, pending_rider_order
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     raw_body = await request.body()
     if not _twilio_signature_valid(request, raw_body):
         return Response(content="<Response></Response>", media_type="application/xml", status_code=403)
@@ -871,7 +996,6 @@ async def whatsapp_webhook(request: Request):
     Body = form.get("Body", [""])[0]
     user_phone = From.replace("whatsapp:", "").strip()
     msg_text = Body.strip()
-    msg_lower = _normalise(msg_text)
     try:
         num_media = int(form.get("NumMedia", ["0"])[0] or 0)
     except ValueError:
@@ -882,25 +1006,29 @@ async def whatsapp_webhook(request: Request):
 
     media_content_type = form.get("MediaContentType0", [""])[0] if num_media > 0 else ""
     if num_media > 0 and media_content_type.startswith("audio/") and not msg_text:
-        # WhatsApp voice note: transcribe it, then handle the transcribed
-        # text exactly as if the customer had typed it (order, correction,
-        # name/address/phone states, kitchen 1/2, owner commands).
-        # Any failure here must ask the customer to type — never silence,
-        # never a 500.
-        try:
-            audio_bytes = _download_twilio_media(media_url)
-            transcribed = _transcribe_audio(audio_bytes, media_content_type) if audio_bytes else ""
-        except Exception as e:
-            print(f"Voice note handling error: {e}")
-            transcribed = ""
-        if not transcribed:
-            send_whatsapp_message(to_number=user_phone, body=MSG["voice_note_failed"])
-            return Response(content="<Response></Response>", media_type="application/xml")
-        print(f"Voice note transcribed for {user_phone}: {transcribed[:120]}")
-        msg_text = transcribed
-        msg_lower = _normalise(msg_text)
-        media_url = ""  # audio already handled — never treat it as a banner image
+        # WhatsApp voice note: answer Twilio IMMEDIATELY and do the slow
+        # work (download + Gemini transcription) in a background task.
+        # Transcribing inline hung the webhook on real audio — the
+        # customer got no reply at all — so the webhook must never wait
+        # on it. The background task sends the reply (or the
+        # voice_note_failed fallback) via the Twilio REST API.
+        background_tasks.add_task(
+            _process_voice_note, user_phone, media_url, media_content_type)
+        return Response(content="<Response></Response>", media_type="application/xml")
+    return _handle_text_message(user_phone, msg_text, media_url)
 
+
+def _handle_text_message(user_phone: str, msg_text: str, media_url: str,
+                         from_voice_note: bool = False):
+    """Handle one typed (or transcribed) text message end to end and
+    return the empty TwiML Response. Shared by the webhook (typed text,
+    still synchronous) and the voice-note background task (transcribed
+    text). Covers owner/kitchen commands, the order flow (parse + fuzzy,
+    correction, name/address/phone) and menu/offer commands.
+    from_voice_note=True only changes the greeting: a voice "hi" gets
+    the greeting voice note + menu instead of a text welcome."""
+    global FIXED_DELIVERY_CHARGE, kitchen_pending_order, pending_rider_order
+    msg_lower = _normalise(msg_text)
     owner_num_clean = OWNER_WHATSAPP.replace("whatsapp:", "").strip()
     kitchen_num_clean = KITCHEN_WHATSAPP.replace("whatsapp:", "").strip()
     if user_phone in (owner_num_clean, kitchen_num_clean) and owner_num_clean:
@@ -1180,10 +1308,19 @@ async def whatsapp_webhook(request: Request):
 
     if current_state == STATE_IDLE:
         if msg_lower in GREETINGS:
-            send_whatsapp_message(
-                to_number=user_phone,
-                body=f"{MSG['welcome'].format(name=BUSINESS_NAME)} 👋\n\n{menu_text()}",
-            )
+            if from_voice_note and _greeting_voice_url():
+                # Voice "hi"/"salam": answer with the greeting voice
+                # note + the menu as text.
+                _send_voice_greeting(user_phone)
+            else:
+                # Typed "Hi", or a voice "hi" with no public audio URL
+                # (SERVER_URL unset / file missing): the text welcome +
+                # menu — the note WAS understood, so the "samajh nahi
+                # aayi" text would be wrong here.
+                send_whatsapp_message(
+                    to_number=user_phone,
+                    body=f"{MSG['welcome'].format(name=BUSINESS_NAME)} 👋\n\n{menu_text()}",
+                )
             return Response(content="<Response></Response>", media_type="application/xml")
         parsed_order = parse_order_with_gemini(msg_text)
         if not parsed_order:
