@@ -860,7 +860,7 @@ async def whatsapp_webhook(request: Request):
                     strict_ok = True
             if not strict_ok:
                 # Tolerant scan for natural-language confirms, e.g.
-                # "confirmed order 20261122-4049 Rider name Ali 03007724856".
+                # "confirmed order <date-id> Rider name <name> <phone>".
                 order_ref = rider_name = rider_phone = None
                 eta = 30
                 m_id = re.search(r"(?:ORD-)?(\d{8}-\d+)", msg_text, re.IGNORECASE)
